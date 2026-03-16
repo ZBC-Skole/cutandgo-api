@@ -7,12 +7,15 @@ import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 
 const defaultSiteUrl = "http://localhost:5173";
+const defaultAuthUrl = "http://127.0.0.1:3211";
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const siteUrl = process.env.SITE_URL ?? defaultSiteUrl;
+  const authUrl = process.env.BETTER_AUTH_URL ?? defaultAuthUrl;
 
   return betterAuth({
+    baseURL: authUrl,
     trustedOrigins: [siteUrl],
     database: authComponent.adapter(ctx),
     emailAndPassword: {

@@ -1,12 +1,11 @@
-import { Hono } from 'hono'
-import { renderer } from './renderer'
+import { Hono } from "hono";
+import { renderer } from "./renderer";
+import isAlive from "./routes/isAlive";
 
-const app = new Hono()
+const api = new Hono().basePath("/api/v1");
 
-app.use(renderer)
+api.use(renderer);
 
-app.get('/', (c) => {
-  return c.render(<h1>Hello!</h1>)
-})
+api.route("/is-alive", isAlive);
 
-export default app
+export default api;

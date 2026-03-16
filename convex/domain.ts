@@ -58,6 +58,8 @@ export const salonInputValidator = v.object({
   city: v.string(),
   country: v.string(),
   timezone: v.string(),
+  latitude: v.optional(v.number()),
+  longitude: v.optional(v.number()),
 });
 
 export const employeeInputValidator = v.object({
@@ -69,6 +71,7 @@ export const employeeInputValidator = v.object({
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
   bio: v.optional(v.string()),
+  personalId: v.optional(v.string()),
 });
 
 export const serviceInputValidator = v.object({
@@ -86,7 +89,7 @@ export const bookingInputValidator = v.object({
   employeeId: v.id("employees"),
   serviceId: v.id("services"),
   startsAt: v.number(),
-  endsAt: v.number(),
+  endsAt: v.optional(v.number()),
   notes: v.optional(v.string()),
   customerName: v.string(),
   customerEmail: v.string(),
@@ -210,4 +213,28 @@ export function validateDateRange(startsAt: number, endsAt: number) {
   if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || startsAt >= endsAt) {
     throw new Error("Start time must be before end time.");
   }
+}
+
+export function validateLatitude(value: number) {
+  if (!Number.isFinite(value) || value < -90 || value > 90) {
+    throw new Error("Latitude must be between -90 and 90.");
+  }
+  return value;
+}
+
+export function validateLongitude(value: number) {
+  if (!Number.isFinite(value) || value < -180 || value > 180) {
+    throw new Error("Longitude must be between -180 and 180.");
+  }
+  return value;
+}
+
+export function validatePersonalId(value: string) {
+  const normalized = normalizeTrimmedString(value).toUpperCase();
+  if (!/^[A-Z0-9-]{4,32}$/.test(normalized)) {
+    throw new Error(
+      "Personal ID must be 4-32 characters and contain letters, numbers, or hyphens only.",
+    );
+  }
+  return normalized;
 }

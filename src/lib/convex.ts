@@ -113,7 +113,12 @@ export function toErrorResponse(c: AppContext, error: unknown) {
     message.includes("must") ||
     message.includes("already exists") ||
     message.includes("does not belong") ||
-    message.includes("missing")
+    message.includes("missing") ||
+    message.includes("outside opening hours") ||
+    message.includes("no longer available") ||
+    message.includes("cannot be cancelled") ||
+    message.includes("Invalid personal ID") ||
+    message.includes("No salons with location data found")
   ) {
     return c.json({ error: message }, 400);
   }

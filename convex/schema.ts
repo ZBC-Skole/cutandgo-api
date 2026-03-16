@@ -37,6 +37,8 @@ export default defineSchema({
     city: v.string(),
     country: v.string(),
     timezone: v.string(),
+    latitude: v.optional(v.number()),
+    longitude: v.optional(v.number()),
     ownerUserId: v.optional(v.id("appUsers")),
     isActive: v.boolean(),
     createdAt: v.number(),
@@ -56,12 +58,14 @@ export default defineSchema({
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
     bio: v.optional(v.string()),
+    personalId: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("salonId", ["salonId"])
     .index("userId", ["userId"])
+    .index("personalId", ["personalId"])
     .index("salonId_isActive", ["salonId", "isActive"]),
 
   services: defineTable({
@@ -92,6 +96,8 @@ export default defineSchema({
     customerName: v.string(),
     customerEmail: v.string(),
     customerPhone: v.string(),
+    cancellationReason: v.optional(v.string()),
+    cancelledAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

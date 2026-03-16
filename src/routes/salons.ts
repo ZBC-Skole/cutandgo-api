@@ -19,6 +19,8 @@ type CreateSalonBody = {
   city: string;
   country: string;
   timezone: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 type CreateEmployeeBody = {
@@ -29,6 +31,7 @@ type CreateEmployeeBody = {
   email?: string;
   phone?: string;
   bio?: string;
+  personalId?: string;
 };
 
 type CreateServiceBody = {
@@ -44,7 +47,7 @@ type CreateBookingBody = {
   employeeId: string;
   serviceId: string;
   startsAt: number;
-  endsAt: number;
+  endsAt?: number;
   notes?: string;
   customerName: string;
   customerEmail: string;
@@ -71,7 +74,33 @@ type CreateOpeningHoursBody = {
   validTo?: number;
 };
 
+type UpdateSalonLocationBody = {
+  latitude: number;
+  longitude: number;
+};
+
+type UpdateOpeningHoursBody = {
+  opensAt?: string;
+  closesAt?: string;
+  isClosed?: boolean;
+  validFrom?: number;
+  validTo?: number;
+};
+
 const salons = new Hono<{ Bindings: AppBindings }>();
+
+salons.get("/nearest", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const nearestSalon = await client.query(api.core.findNearestSalon, {
+      latitude: Number(c.req.query("latitude")),
+      longitude: Number(c.req.query("longitude")),
+    });
+    return c.json({ data: nearestSalon });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
 
 salons.get("/", async (c) => {
   try {
@@ -101,6 +130,49 @@ salons.get("/:salonId/foundation", async (c) => {
       salonId: c.req.param("salonId") as never,
     });
     return c.json({ data: foundation });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+salons.get("/:salonId/employees", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const employees = await client.query(api.core.listSalonEmployees, {
+      salonId: c.req.param("salonId") as never,
+    });
+    return c.json({ data: employees });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+salons.get("/:salonId/services", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const employeeId = c.req.query("employeeId");
+    const services = await client.query(api.core.listSalonServices, {
+      salonId: c.req.param("salonId") as never,
+      employeeId: employeeId ? (employeeId as never) : undefined,
+    });
+    return c.json({ data: services });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+salons.get("/:salonId/available-slots", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const days = c.req.query("days");
+    const availability = await client.query(api.core.getAvailableTimeSlots, {
+      salonId: c.req.param("salonId") as never,
+      employeeId: c.req.query("employeeId") as never,
+      serviceId: c.req.query("serviceId") as never,
+      startsAt: Number(c.req.query("startsAt")),
+      days: days ? Number(days) : undefined,
+    });
+    return c.json({ data: availability });
   } catch (error) {
     return toErrorResponse(c, error);
   }
@@ -148,6 +220,22 @@ salons.post("/:salonId/bookings", async (c) => {
   }
 });
 
+salons.patch("/:salonId/location", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const body =
+      (await parseJsonBody<UpdateSalonLocationBody>(c)) as UpdateSalonLocationBody;
+    const salon = await client.mutation(api.core.updateSalonLocation, {
+      salonId: c.req.param("salonId") as never,
+      latitude: body.latitude,
+      longitude: body.longitude,
+    });
+    return c.json({ data: salon });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
 salons.post("/:salonId/products", async (c) => {
   try {
     const client = createConvexClient(c);
@@ -172,6 +260,41 @@ salons.post("/:salonId/opening-hours", async (c) => {
       salonId: c.req.param("salonId") as never,
     } as never);
     return c.json({ data: openingHours }, 201);
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+salons.patch("/:salonId/opening-hours/:openingHoursId", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const body =
+      (await parseJsonBody<UpdateOpeningHoursBody>(c)) as UpdateOpeningHoursBody;
+    const openingHours = await client.mutation(api.core.updateOpeningHours, {
+      openingHoursId: c.req.param("openingHoursId") as never,
+      opensAt: body.opensAt,
+      closesAt: body.closesAt,
+      isClosed: body.isClosed,
+      validFrom: body.validFrom,
+      validTo: body.validTo,
+    });
+    return c.json({ data: openingHours });
+  } catch (error) {
+    return toErrorResponse(c, error);
+  }
+});
+
+salons.get("/:salonId/analytics", async (c) => {
+  try {
+    const client = createConvexClient(c);
+    const startsAt = c.req.query("startsAt");
+    const endsAt = c.req.query("endsAt");
+    const analytics = await client.query(api.core.getSalonAnalytics, {
+      salonId: c.req.param("salonId") as never,
+      startsAt: startsAt ? Number(startsAt) : undefined,
+      endsAt: endsAt ? Number(endsAt) : undefined,
+    });
+    return c.json({ data: analytics });
   } catch (error) {
     return toErrorResponse(c, error);
   }

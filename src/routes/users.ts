@@ -6,6 +6,9 @@ import {
   toErrorResponse,
   type AppBindings,
 } from "../lib/convex";
+import { describeRoute } from "hono-openapi";
+import * as v from "valibot";
+import { appUserSchema, examples, jsonContent, viewerContextSchema } from "../docs/openapi";
 
 type BootstrapBody = {
   phone?: string;
@@ -19,7 +22,28 @@ type AssignRoleBody = {
 
 const users = new Hono<{ Bindings: AppBindings }>();
 
-users.get("/me", async (c) => {
+users.get(
+  "/me",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Get current user context",
+    responses: {
+      200: {
+        description: "Current authenticated user context.",
+        content: jsonContent(viewerContextSchema, {
+          authUser: {
+            _id: "auth_01",
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+          },
+          appUser: examples.appUser,
+          salon: examples.salon,
+          employee: examples.employee,
+        }),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const viewer = await client.query(api.core.getViewerContext, {});
@@ -27,9 +51,29 @@ users.get("/me", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-users.post("/me/bootstrap", async (c) => {
+users.post(
+  "/me/bootstrap",
+  describeRoute({
+    tags: ["Users"],
+    summary: "Bootstrap current user profile",
+    responses: {
+      201: {
+        description: "User profile created or updated.",
+        content: jsonContent(
+          v.object({
+            data: appUserSchema,
+          }),
+          {
+            data: examples.appUser,
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<BootstrapBody>(c)) as BootstrapBody;
@@ -40,9 +84,34 @@ users.post("/me/bootstrap", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-users.patch("/:appUserId/role", async (c) => {
+users.patch(
+  "/:appUserId/role",
+  describeRoute({
+    tags: ["Users", "Admin"],
+    summary: "Assign role to user",
+    responses: {
+      200: {
+        description: "User role updated.",
+        content: jsonContent(
+          v.object({
+            data: appUserSchema,
+          }),
+          {
+            data: {
+              ...examples.appUser,
+              role: "staff",
+              salonId: examples.salon._id,
+              employeeId: examples.employee._id,
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<AssignRoleBody>(c)) as AssignRoleBody;
@@ -56,6 +125,7 @@ users.patch("/:appUserId/role", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
 export default users;

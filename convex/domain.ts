@@ -71,7 +71,7 @@ export const employeeInputValidator = v.object({
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
   bio: v.optional(v.string()),
-  personalId: v.optional(v.string()),
+  workerPin: v.optional(v.string()),
 });
 
 export const serviceInputValidator = v.object({
@@ -229,12 +229,10 @@ export function validateLongitude(value: number) {
   return value;
 }
 
-export function validatePersonalId(value: string) {
-  const normalized = normalizeTrimmedString(value).toUpperCase();
-  if (!/^[A-Z0-9-]{4,32}$/.test(normalized)) {
-    throw new Error(
-      "Personal ID must be 4-32 characters and contain letters, numbers, or hyphens only.",
-    );
+export function validateWorkerPin(value: string) {
+  const normalized = normalizeTrimmedString(value);
+  if (!/^\d{4}$/.test(normalized)) {
+    throw new Error("Worker PIN must be exactly 4 digits.");
   }
   return normalized;
 }

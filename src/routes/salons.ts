@@ -6,6 +6,23 @@ import {
   toErrorResponse,
   type AppBindings,
 } from "../lib/convex";
+import { describeRoute } from "hono-openapi";
+import * as v from "valibot";
+import {
+  availabilityResponseSchema,
+  bookingExpandedExample,
+  bookingExpandedSchema,
+  employeeSchema,
+  examples,
+  jsonContent,
+  nearestSalonSchema,
+  openingHoursSchema,
+  productSchema,
+  salonAnalyticsSchema,
+  salonFoundationSchema,
+  salonSchema,
+  serviceSchema,
+} from "../docs/openapi";
 
 type CreateSalonBody = {
   name: string;
@@ -31,7 +48,7 @@ type CreateEmployeeBody = {
   email?: string;
   phone?: string;
   bio?: string;
-  personalId?: string;
+  workerPin?: string;
 };
 
 type CreateServiceBody = {
@@ -89,7 +106,33 @@ type UpdateOpeningHoursBody = {
 
 const salons = new Hono<{ Bindings: AppBindings }>();
 
-salons.get("/nearest", async (c) => {
+salons.get(
+  "/nearest",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "Find nearest salon",
+    responses: {
+      200: {
+        description: "Nearest salon based on coordinates.",
+        content: jsonContent(
+          v.object({ data: nearestSalonSchema }),
+          {
+            data: {
+              nearestSalon: examples.salon,
+              distanceKm: 1.2,
+              candidates: [
+                {
+                  salon: examples.salon,
+                  distanceKm: 1.2,
+                },
+              ],
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const nearestSalon = await client.query(api.core.findNearestSalon, {
@@ -100,9 +143,25 @@ salons.get("/nearest", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/", async (c) => {
+salons.get(
+  "/",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "List salons",
+    responses: {
+      200: {
+        description: "Active salons.",
+        content: jsonContent(
+          v.object({ data: v.array(salonSchema) }),
+          { data: [examples.salon] },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const salonList = await client.query(api.core.listSalons, {});
@@ -110,9 +169,22 @@ salons.get("/", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/", async (c) => {
+salons.post(
+  "/",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Create salon",
+    responses: {
+      201: {
+        description: "Salon created.",
+        content: jsonContent(v.object({ data: salonSchema }), { data: examples.salon }),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<CreateSalonBody>(c)) as CreateSalonBody;
@@ -121,9 +193,33 @@ salons.post("/", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/:salonId/foundation", async (c) => {
+salons.get(
+  "/:salonId/foundation",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "Get salon foundation data",
+    responses: {
+      200: {
+        description: "Salon foundation data.",
+        content: jsonContent(
+          v.object({ data: salonFoundationSchema }),
+          {
+            data: {
+              salon: examples.salon,
+              employees: [examples.employee],
+              services: [examples.service],
+              openingHours: [],
+              products: [],
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const foundation = await client.query(api.core.getSalonFoundation, {
@@ -133,9 +229,25 @@ salons.get("/:salonId/foundation", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/:salonId/employees", async (c) => {
+salons.get(
+  "/:salonId/employees",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "List salon employees",
+    responses: {
+      200: {
+        description: "Active employees for a salon.",
+        content: jsonContent(
+          v.object({ data: v.array(employeeSchema) }),
+          { data: [examples.employee] },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const employees = await client.query(api.core.listSalonEmployees, {
@@ -145,9 +257,25 @@ salons.get("/:salonId/employees", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/:salonId/services", async (c) => {
+salons.get(
+  "/:salonId/services",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "List salon services",
+    responses: {
+      200: {
+        description: "Services for a salon or employee.",
+        content: jsonContent(
+          v.object({ data: v.array(serviceSchema) }),
+          { data: [examples.service] },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const employeeId = c.req.query("employeeId");
@@ -159,9 +287,44 @@ salons.get("/:salonId/services", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/:salonId/available-slots", async (c) => {
+salons.get(
+  "/:salonId/available-slots",
+  describeRoute({
+    tags: ["Booking Discovery"],
+    summary: "Get available booking slots",
+    responses: {
+      200: {
+        description: "Available time slots.",
+        content: jsonContent(
+          v.object({ data: availabilityResponseSchema }),
+          {
+            data: {
+              salon: examples.salon,
+              employee: examples.employee,
+              service: examples.service,
+              availability: [
+                {
+                  date: "2026-03-17",
+                  slots: [
+                    {
+                      employeeId: "emp_01",
+                      serviceId: "srv_01",
+                      startsAt: 1773651600000,
+                      endsAt: 1773653400000,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const days = c.req.query("days");
@@ -176,9 +339,22 @@ salons.get("/:salonId/available-slots", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/:salonId/employees", async (c) => {
+salons.post(
+  "/:salonId/employees",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Create salon employee",
+    responses: {
+      201: {
+        description: "Employee created.",
+        content: jsonContent(v.object({ data: employeeSchema }), { data: examples.employee }),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<CreateEmployeeBody>(c)) as CreateEmployeeBody;
@@ -190,9 +366,22 @@ salons.post("/:salonId/employees", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/:salonId/services", async (c) => {
+salons.post(
+  "/:salonId/services",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Create salon service",
+    responses: {
+      201: {
+        description: "Service created.",
+        content: jsonContent(v.object({ data: serviceSchema }), { data: examples.service }),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<CreateServiceBody>(c)) as CreateServiceBody;
@@ -204,9 +393,25 @@ salons.post("/:salonId/services", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/:salonId/bookings", async (c) => {
+salons.post(
+  "/:salonId/bookings",
+  describeRoute({
+    tags: ["Bookings"],
+    summary: "Create booking",
+    responses: {
+      201: {
+        description: "Booking created.",
+        content: jsonContent(
+          v.object({ data: bookingExpandedSchema }),
+          { data: bookingExpandedExample },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<CreateBookingBody>(c)) as CreateBookingBody;
@@ -218,9 +423,22 @@ salons.post("/:salonId/bookings", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.patch("/:salonId/location", async (c) => {
+salons.patch(
+  "/:salonId/location",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Update salon location",
+    responses: {
+      200: {
+        description: "Salon location updated.",
+        content: jsonContent(v.object({ data: salonSchema }), { data: examples.salon }),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body =
@@ -234,9 +452,40 @@ salons.patch("/:salonId/location", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/:salonId/products", async (c) => {
+salons.post(
+  "/:salonId/products",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Create product",
+    responses: {
+      201: {
+        description: "Product created.",
+        content: jsonContent(
+          v.object({ data: productSchema }),
+          {
+            data: {
+              _id: "prd_01",
+              salonId: "sln_01",
+              name: "Sea Salt Spray",
+              brand: "Cut&Go",
+              description: "Texture spray for styling.",
+              category: "Styling",
+              priceDkk: 149,
+              stockQuantity: 24,
+              sku: "CG-SEA-SALT",
+              isActive: true,
+              createdAt: 1773651600000,
+              updatedAt: 1773651600000,
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body = (await parseJsonBody<CreateProductBody>(c)) as CreateProductBody;
@@ -248,9 +497,36 @@ salons.post("/:salonId/products", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.post("/:salonId/opening-hours", async (c) => {
+salons.post(
+  "/:salonId/opening-hours",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Create opening hours",
+    responses: {
+      201: {
+        description: "Opening hours created.",
+        content: jsonContent(
+          v.object({ data: openingHoursSchema }),
+          {
+            data: {
+              _id: "oh_01",
+              salonId: "sln_01",
+              dayOfWeek: 2,
+              opensAt: "09:00",
+              closesAt: "17:00",
+              isClosed: false,
+              createdAt: 1773651600000,
+              updatedAt: 1773651600000,
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body =
@@ -263,9 +539,36 @@ salons.post("/:salonId/opening-hours", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.patch("/:salonId/opening-hours/:openingHoursId", async (c) => {
+salons.patch(
+  "/:salonId/opening-hours/:openingHoursId",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Update opening hours",
+    responses: {
+      200: {
+        description: "Opening hours updated.",
+        content: jsonContent(
+          v.object({ data: openingHoursSchema }),
+          {
+            data: {
+              _id: "oh_01",
+              salonId: "sln_01",
+              dayOfWeek: 2,
+              opensAt: "10:00",
+              closesAt: "18:00",
+              isClosed: false,
+              createdAt: 1773651600000,
+              updatedAt: 1773655200000,
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const body =
@@ -282,9 +585,47 @@ salons.patch("/:salonId/opening-hours/:openingHoursId", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
-salons.get("/:salonId/analytics", async (c) => {
+salons.get(
+  "/:salonId/analytics",
+  describeRoute({
+    tags: ["Admin"],
+    summary: "Get salon analytics",
+    responses: {
+      200: {
+        description: "Salon analytics.",
+        content: jsonContent(
+          v.object({ data: salonAnalyticsSchema }),
+          {
+            data: {
+              salon: examples.salon,
+              range: {
+                startsAt: 1773046800000,
+                endsAt: 1773651600000,
+              },
+              totals: {
+                totalBookings: 42,
+                cancelledBookings: 3,
+                completedBookings: 34,
+                confirmedBookings: 5,
+                revenueDkk: 10166,
+              },
+              serviceBreakdown: [
+                {
+                  serviceId: "srv_01",
+                  name: "Herreklip",
+                  bookings: 18,
+                },
+              ],
+            },
+          },
+        ),
+      },
+    },
+  }),
+  async (c) => {
   try {
     const client = createConvexClient(c);
     const startsAt = c.req.query("startsAt");
@@ -298,6 +639,7 @@ salons.get("/:salonId/analytics", async (c) => {
   } catch (error) {
     return toErrorResponse(c, error);
   }
-});
+  },
+);
 
 export default salons;

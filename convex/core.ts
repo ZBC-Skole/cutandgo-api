@@ -18,12 +18,12 @@ import {
   validateLongitude,
   validateMoney,
   validateNonNegativeInteger,
-  validatePersonalId,
   validatePhone,
   validatePositiveInteger,
   validateRequiredString,
   validateSlug,
   validateTimeString,
+  validateWorkerPin,
 } from "./domain";
 import { authComponent } from "./auth";
 import { assertSalonAccess, requireRole, requireViewer } from "./authz";
@@ -50,27 +50,25 @@ type EmployeeDoc = Doc<"employees">;
 type ServiceDoc = Doc<"services">;
 type DbCtx = QueryCtx | MutationCtx;
 
-function generatePersonalId(firstName: string, lastName: string) {
-  const base = `${firstName.slice(0, 2)}${lastName.slice(0, 2)}`
-    .replace(/[^a-z0-9]/gi, "")
-    .toUpperCase()
-    .padEnd(4, "X");
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `${base}-${suffix}`;
+function generateWorkerPin() {
+  return String(1000 + Math.floor(Math.random() * 9000));
 }
 
-async function ensureUniquePersonalId(
+async function ensureUniqueWorkerPin(
   ctx: DbCtx,
-  personalId: string,
+  salonId: Id<"salons">,
+  workerPin: string,
   currentEmployeeId?: Id<"employees">,
 ) {
   const existing = await ctx.db
     .query("employees")
-    .withIndex("personalId", (query) => query.eq("personalId", personalId))
+    .withIndex("salonId_workerPin", (query) =>
+      query.eq("salonId", salonId).eq("workerPin", workerPin),
+    )
     .unique();
 
   if (existing && existing._id !== currentEmployeeId) {
-    throw new ConvexError("Personal ID already exists.");
+    throw new ConvexError("Worker PIN already exists for this salon.");
   }
 }
 
@@ -224,19 +222,17 @@ async function getBookingExpanded(ctx: DbCtx, booking: BookingDoc) {
   };
 }
 
-async function verifyStaffAccessByPersonalId(
+async function verifyStaffAccessToEmployee(
   ctx: DbCtx,
   employeeId: Id<"employees">,
-  personalId: string,
 ) {
+  const { appUser } = await requireRole(ctx, "staff");
   const employee = await ctx.db.get(employeeId);
   if (!employee || !employee.isActive) {
     throw new ConvexError("Employee not found.");
   }
 
-  if (!employee.personalId || employee.personalId !== validatePersonalId(personalId)) {
-    throw new ConvexError("Invalid personal ID.");
-  }
+  assertSalonAccess(appUser, employee.salonId);
 
   return employee;
 }
@@ -713,10 +709,28 @@ export const createEmployee = mutation({
 
     const firstName = validateRequiredString("First name", args.firstName, 2);
     const lastName = validateRequiredString("Last name", args.lastName, 2);
-    const personalId = validatePersonalId(
-      args.personalId ?? generatePersonalId(firstName, lastName),
-    );
-    await ensureUniquePersonalId(ctx, personalId);
+    const requestedWorkerPin = args.workerPin
+      ? validateWorkerPin(args.workerPin)
+      : undefined;
+    let workerPin = requestedWorkerPin ?? generateWorkerPin();
+
+    if (requestedWorkerPin) {
+      await ensureUniqueWorkerPin(ctx, args.salonId, workerPin);
+    } else {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const existing = await ctx.db
+          .query("employees")
+          .withIndex("salonId_workerPin", (query) =>
+            query.eq("salonId", args.salonId).eq("workerPin", workerPin),
+          )
+          .unique();
+        if (!existing) {
+          break;
+        }
+        workerPin = generateWorkerPin();
+      }
+      await ensureUniqueWorkerPin(ctx, args.salonId, workerPin);
+    }
 
     const now = Date.now();
     const employeeId = await ctx.db.insert("employees", {
@@ -728,7 +742,7 @@ export const createEmployee = mutation({
       email: args.email ? validateEmail(args.email) : undefined,
       phone: args.phone ? validatePhone(args.phone) : undefined,
       bio: sanitizeOptionalText(args.bio),
-      personalId,
+      workerPin,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -1181,19 +1195,29 @@ export const getPlatformAnalytics = query({
   },
 });
 
-export const staffLoginWithPersonalId = query({
+export const staffLoginWithWorkerPin = query({
   args: {
-    personalId: v.string(),
+    workerPin: v.string(),
+    salonId: v.optional(v.id("salons")),
   },
   handler: async (ctx, args) => {
-    const personalId = validatePersonalId(args.personalId);
+    const { appUser } = await requireRole(ctx, "staff");
+    const resolvedSalonId = appUser.salonId ?? args.salonId;
+    if (!resolvedSalonId) {
+      throw new ConvexError("Main salon account is not linked to a salon.");
+    }
+
+    assertSalonAccess(appUser, resolvedSalonId);
+    const workerPin = validateWorkerPin(args.workerPin);
     const employee = await ctx.db
       .query("employees")
-      .withIndex("personalId", (query) => query.eq("personalId", personalId))
+      .withIndex("salonId_workerPin", (query) =>
+        query.eq("salonId", resolvedSalonId).eq("workerPin", workerPin),
+      )
       .unique();
 
     if (!employee || !employee.isActive) {
-      throw new ConvexError("Invalid personal ID.");
+      throw new ConvexError("Invalid worker PIN.");
     }
 
     const salon = await ctx.db.get(employee.salonId);
@@ -1208,11 +1232,10 @@ export const staffLoginWithPersonalId = query({
 export const getEmployeeNextCustomer = query({
   args: {
     employeeId: v.id("employees"),
-    personalId: v.string(),
     now: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const employee = await verifyStaffAccessByPersonalId(ctx, args.employeeId, args.personalId);
+    const employee = await verifyStaffAccessToEmployee(ctx, args.employeeId);
     const now = args.now ?? Date.now();
     const bookings = await ctx.db
       .query("bookings")
@@ -1242,12 +1265,11 @@ export const getEmployeeNextCustomer = query({
 export const getEmployeeBookings = query({
   args: {
     employeeId: v.id("employees"),
-    personalId: v.string(),
     startsAt: v.optional(v.number()),
     endsAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const employee = await verifyStaffAccessByPersonalId(ctx, args.employeeId, args.personalId);
+    const employee = await verifyStaffAccessToEmployee(ctx, args.employeeId);
     const startsAt = args.startsAt ?? Date.now() - LOOKBACK_WINDOW_MS;
     const endsAt = args.endsAt ?? Date.now() + 14 * LOOKBACK_WINDOW_MS;
     validateDateRange(startsAt, endsAt);
@@ -1275,15 +1297,15 @@ export const getEmployeeBookings = query({
 export const getBookingDetailsForStaff = query({
   args: {
     bookingId: v.id("bookings"),
-    personalId: v.string(),
   },
   handler: async (ctx, args) => {
+    const { appUser } = await requireRole(ctx, "staff");
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) {
       throw new ConvexError("Booking not found.");
     }
 
-    await verifyStaffAccessByPersonalId(ctx, booking.employeeId, args.personalId);
+    assertSalonAccess(appUser, booking.salonId);
     return await getBookingExpanded(ctx, booking);
   },
 });
@@ -1291,13 +1313,12 @@ export const getBookingDetailsForStaff = query({
 export const cancelEmployeeBookingsForSickness = mutation({
   args: {
     employeeId: v.id("employees"),
-    personalId: v.string(),
     startsAt: v.number(),
     endsAt: v.number(),
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const employee = await verifyStaffAccessByPersonalId(ctx, args.employeeId, args.personalId);
+    const employee = await verifyStaffAccessToEmployee(ctx, args.employeeId);
     validateDateRange(args.startsAt, args.endsAt);
 
     const bookings = await ctx.db

@@ -58,14 +58,14 @@ export default defineSchema({
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
     bio: v.optional(v.string()),
-    personalId: v.optional(v.string()),
+    workerPin: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("salonId", ["salonId"])
     .index("userId", ["userId"])
-    .index("personalId", ["personalId"])
+    .index("salonId_workerPin", ["salonId", "workerPin"])
     .index("salonId_isActive", ["salonId", "isActive"]),
 
   services: defineTable({

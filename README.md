@@ -36,11 +36,17 @@ Admin-flow:
 
 Personale-flow:
 
-- validere login via `personalId`
+- validere medarbejdervalg via 4-cifret `workerPin`
 - hente naeste kunde
 - hente medarbejderens bookinger
 - hente bookingdetaljer inkl. behandlingstype
 - aflyse kommende bookinger ved sygdom
+
+Dokumentation:
+
+- generere OpenAPI-spec automatisk fra Hono
+- vise interaktiv Scalar docs-side med grouped sidebar
+- vise konkrete 200/201 response previews i docs
 
 ## Arkitektur
 
@@ -75,7 +81,7 @@ Tabeller:
 Nye/noeglefelter:
 
 - `salons.latitude` og `salons.longitude` til nearest-salon lookup
-- `employees.personalId` til personale-login
+- `employees.workerPin` til hurtigt medarbejder-login pa butikstablet
 - `bookings.cancellationReason` og `bookings.cancelledAt` til aflysning og sygdomsflow
 
 ## Roller Og Adgang
@@ -87,7 +93,23 @@ Nye/noeglefelter:
 Auth:
 
 - beskyttede kunde/admin-endpoints bruger `Authorization: Bearer <token>` eller Better Auth cookie
-- personale-endpoints bruger `personalId` som validering
+- personale-flowet bruger butikkens hovedkonto som auth og en 4-cifret `workerPin` til at vaelge aktiv medarbejder pa iPad
+
+## Tablet-flow For Personale
+
+Den forventede iPad-oplevelse er:
+
+1. Salonen logger ind pa tabletten med butikkens hovedkonto.
+2. Admin opretter medarbejdere for salonen.
+3. Hver medarbejder far automatisk en 4-cifret `workerPin`, fx `1243`.
+4. Pa iPad'en vaelger medarbejderen sig selv ved at indtaste sin `workerPin`.
+5. Tabletten bruger derefter medarbejderens `employeeId` til at hente naeste kunde, bookinger og bookingdetaljer.
+
+Det betyder:
+
+- ingen separat fuld login per medarbejder
+- hurtig medarbejderskift pa en delt salon-tablet
+- `workerPin` er scoped pr. salon, ikke globalt pa tværs af hele platformen
 
 ## Kom I Gang
 
@@ -111,6 +133,14 @@ Projektet forventer mindst:
 - `SITE_URL`
 - `BETTER_AUTH_URL`
 
+Til lokal udvikling kan de ligge i `.env.local`, fx:
+
+```bash
+CONVEX_URL=https://your-deployment.convex.cloud
+SITE_URL=http://localhost:5173
+BETTER_AUTH_URL=http://localhost:3211
+```
+
 ### 4. Start appen
 
 ```bash
@@ -130,6 +160,13 @@ Base path:
 ```txt
 /api/v1
 ```
+
+Dokumentation:
+
+- `GET /openapi.json` returnerer OpenAPI-spec'en
+- `GET /docs` viser Scalar API Reference
+- docs-siden er grupperet i `System`, `Users`, `Booking Discovery`, `Bookings`, `Admin` og `Staff`
+- docs-siden viser eksempler pa succes-responser for de vigtigste endpoints
 
 ### Health
 
@@ -230,7 +267,7 @@ Eksempel:
 
 `POST /salons/:salonId/employees`
 
-- opretter medarbejder og genererer `personalId`, hvis det ikke sendes med
+- opretter medarbejder og genererer en 4-cifret `workerPin`, hvis det ikke sendes med
 
 `POST /salons/:salonId/services`
 
@@ -266,25 +303,26 @@ Der findes ogsa et dedikeret admin-namespace:
 
 `POST /staff/login`
 
-- validerer medarbejder via `personalId`
+- validerer medarbejder via `workerPin` inden for den salon, som hovedkontoen allerede er logget ind pa
+- egnet til delt iPad/tablet i salonen
 
 Eksempel:
 
 ```json
 {
-  "personalId": "ADLO-42ABCD"
+  "workerPin": "1243"
 }
 ```
 
-`GET /staff/:employeeId/next-customer?personalId=<personalId>`
+`GET /staff/:employeeId/next-customer`
 
 - returnerer medarbejderens naeste kunde
 
-`GET /staff/:employeeId/bookings?personalId=<personalId>&startsAt=<unixMs>&endsAt=<unixMs>`
+`GET /staff/:employeeId/bookings?startsAt=<unixMs>&endsAt=<unixMs>`
 
 - returnerer medarbejderens bookingoversigt
 
-`GET /staff/bookings/:bookingId?personalId=<personalId>`
+`GET /staff/bookings/:bookingId`
 
 - returnerer bookingdetaljer inkl. behandlingstype
 
@@ -296,7 +334,6 @@ Eksempel:
 
 ```json
 {
-  "personalId": "ADLO-42ABCD",
   "startsAt": 1773651600000,
   "endsAt": 1773669600000,
   "reason": "Sygdom"

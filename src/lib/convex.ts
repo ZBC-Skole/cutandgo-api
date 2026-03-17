@@ -56,9 +56,11 @@ export function getConvexToken(c: AppContext) {
 }
 
 export function createConvexClient(c: AppContext) {
-  const convexUrl = c.env.CONVEX_URL;
+  const convexUrl = c.env.CONVEX_URL ?? process.env.CONVEX_URL;
   if (!convexUrl) {
-    throw new Error("Missing CONVEX_URL binding.");
+    throw new Error(
+      "Missing CONVEX_URL binding. Add CONVEX_URL to your Cloudflare bindings or local .env.local file.",
+    );
   }
 
   const client = new ConvexHttpClient(convexUrl, {
@@ -86,45 +88,87 @@ export async function parseJsonBody<T>(c: AppContext): Promise<Partial<T>> {
   }
 }
 
-export function toErrorResponse(c: AppContext, error: unknown) {
-  const message =
-    error instanceof Error ? error.message : "Unexpected server error.";
+function extractPrimaryErrorMessage(rawMessage: string) {
+  return rawMessage
+    .replace(/\[Request ID:[^\]]+\]\s*/g, "")
+    .replace(/^Server Error\s*/i, "")
+    .split("\n")[0]
+    .trim();
+}
 
-  if (
-    message.includes("Unauthenticated") ||
-    message.includes("Missing CONVEX_URL binding")
-  ) {
-    const status = message.includes("Missing CONVEX_URL binding") ? 500 : 401;
-    return c.json({ error: message }, status);
+function normalizeErrorMessage(rawMessage: string) {
+  const message = extractPrimaryErrorMessage(rawMessage);
+
+  if (message.includes("Unauthenticated")) {
+    return {
+      status: 401,
+      message: "You need to sign in before calling this endpoint.",
+    };
+  }
+
+  if (message.includes("Missing CONVEX_URL binding")) {
+    return {
+      status: 500,
+      message:
+        "Server configuration is missing CONVEX_URL. Add it to Cloudflare bindings or local .env.local.",
+    };
   }
 
   if (
     message.includes("Insufficient permissions") ||
     message.includes("does not have access")
   ) {
-    return c.json({ error: message }, 403);
+    return {
+      status: 403,
+      message: "You do not have permission to access this resource.",
+    };
   }
 
   if (message.toLowerCase().includes("not found")) {
-    return c.json({ error: message }, 404);
+    return {
+      status: 404,
+      message,
+    };
   }
 
   if (
     message.includes("must") ||
     message.includes("already exists") ||
     message.includes("does not belong") ||
-    message.includes("missing") ||
     message.includes("outside opening hours") ||
     message.includes("no longer available") ||
     message.includes("cannot be cancelled") ||
-    message.includes("Invalid personal ID") ||
-    message.includes("No salons with location data found")
+    message.includes("Invalid worker PIN") ||
+    message.includes("No salons with location data found") ||
+    message.includes("inactive") ||
+    message.includes("missing")
   ) {
-    return c.json({ error: message }, 400);
+    return {
+      status: 400,
+      message,
+    };
+  }
+
+  return null;
+}
+
+export function toErrorResponse(c: AppContext, error: unknown) {
+  const rawMessage =
+    error instanceof Error ? error.message : "Unexpected server error.";
+  const normalized = normalizeErrorMessage(rawMessage);
+
+  if (normalized) {
+    return c.json(
+      { error: normalized.message },
+      { status: normalized.status as 400 | 401 | 403 | 404 | 500 },
+    );
   }
 
   console.error(error);
-  return c.json({ error: "Unexpected server error." }, 500);
+  return c.json(
+    { error: "Something went wrong on the server. Please try again." },
+    500,
+  );
 }
 
 export { api };

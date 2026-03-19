@@ -1,363 +1,234 @@
 # Cut&Go API
 
-Cut&Go API er backend-grundlaget for booking, personale- og admin-flowet i Cut&Go.
+Backend for the Cut&Go client applications.
 
-Stack:
+This repository currently has two server surfaces:
 
-- `Hono` eksponerer REST API under `/api/v1`
-- `Convex` ejer datamodel, queries og mutationer
-- `Better Auth` leverer brugeridentitet til kunde/admin-flows
-- `Cloudflare Workers` er runtime
+1. A Hono app for API documentation and future REST endpoints.
+2. A Convex HTTP app that hosts Better Auth for authentication.
 
-## Hvad API'et Kan Nu
+If you are building the client, treat this README and the generated OpenAPI document as the source of truth for what is available right now.
 
-Booking-startflow:
+## Current Status
 
-- hente aktive saloner
-- finde nærmeste salon ud fra `latitude` og `longitude`
-- hente frisorer pr. salon
-- hente behandlinger pr. salon eller pr. frisor
-- beregne ledige tider ud fra abningstider, servicevarighed og eksisterende bookinger
+The auth server is ready.
 
-Bookingflow:
+The business REST API under `/api/v1` is not fully mounted yet in the current branch, so the main stable integration point for a client today is authentication.
 
-- oprette booking med validering af salon, frisor, behandling og tidspunkt
-- returnere bookingbekraftelse
-- aflyse booking og frigive tiden igen
-- beskytte mod dobbeltbookinger i Convex-mutationens atomiske flow
+What is stable now:
 
-Admin-flow:
+- Better Auth endpoints under `/api/auth/*`
+- OpenID metadata redirect under `/.well-known/openid-configuration`
+- OpenAPI JSON at `/openapi.json`
+- API docs UI at `/docs`
 
-- oprette medarbejdere
-- oprette og opdatere abningstider
-- tilfoje produkter
-- vedligeholde salonlokationer
-- hente analytics pa salon- eller platformniveau
+What is not stable yet:
 
-Personale-flow:
+- Domain endpoints for salons, bookings, staff, admin, and users
 
-- validere medarbejdervalg via 4-cifret `workerPin`
-- hente naeste kunde
-- hente medarbejderens bookinger
-- hente bookingdetaljer inkl. behandlingstype
-- aflyse kommende bookinger ved sygdom
+Build the client so auth is integrated first, and keep the domain API layer behind a small client wrapper so we can swap in the final `/api/v1` routes cleanly.
 
-Dokumentation:
+## Local Development URLs
 
-- generere OpenAPI-spec automatisk fra Hono
-- vise interaktiv Scalar docs-side med grouped sidebar
-- vise konkrete 200/201 response previews i docs
+When running locally with the current setup, these are the expected URLs:
 
-## Arkitektur
+- App/docs server: `http://localhost:5173`
+- Convex API URL: `http://localhost:3210`
+- Convex site URL: `http://localhost:3211`
+- Better Auth base URL: `http://localhost:3211`
 
-1. En klient kalder et Hono endpoint under `/api/v1`
-2. Hono parser input og videresender til Convex
-3. Convex validerer adgang, data og forretningsregler
-4. Convex returnerer normaliserede data, som er klar til app-integration
+The local env file currently uses:
 
-Kernefiler:
-
-- Hono entrypoint: [src/index.tsx](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/index.tsx)
-- Convex/Hono integration: [src/lib/convex.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/lib/convex.ts)
-- Salon routes: [src/routes/salons.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/routes/salons.ts)
-- Booking routes: [src/routes/bookings.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/routes/bookings.ts)
-- Admin routes: [src/routes/admin.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/routes/admin.ts)
-- Staff routes: [src/routes/staff.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/routes/staff.ts)
-- Convex business logic: [convex/core.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/core.ts)
-- Datamodel: [convex/schema.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/schema.ts)
-
-## Datamodel
-
-Tabeller:
-
-- `appUsers`
-- `salons`
-- `employees`
-- `services`
-- `bookings`
-- `products`
-- `openingHours`
-
-Nye/noeglefelter:
-
-- `salons.latitude` og `salons.longitude` til nearest-salon lookup
-- `employees.workerPin` til hurtigt medarbejder-login pa butikstablet
-- `bookings.cancellationReason` og `bookings.cancelledAt` til aflysning og sygdomsflow
-
-## Roller Og Adgang
-
-- `client`: kundeorienterede bookingflows
-- `staff`: salonoperationer inden for egen salon
-- `admin`: tvargaende administration og analytics
-
-Auth:
-
-- beskyttede kunde/admin-endpoints bruger `Authorization: Bearer <token>` eller Better Auth cookie
-- personale-flowet bruger butikkens hovedkonto som auth og en 4-cifret `workerPin` til at vaelge aktiv medarbejder pa iPad
-
-## Tablet-flow For Personale
-
-Den forventede iPad-oplevelse er:
-
-1. Salonen logger ind pa tabletten med butikkens hovedkonto.
-2. Admin opretter medarbejdere for salonen.
-3. Hver medarbejder far automatisk en 4-cifret `workerPin`, fx `1243`.
-4. Pa iPad'en vaelger medarbejderen sig selv ved at indtaste sin `workerPin`.
-5. Tabletten bruger derefter medarbejderens `employeeId` til at hente naeste kunde, bookinger og bookingdetaljer.
-
-Det betyder:
-
-- ingen separat fuld login per medarbejder
-- hurtig medarbejderskift pa en delt salon-tablet
-- `workerPin` er scoped pr. salon, ikke globalt pa tværs af hele platformen
-
-## Kom I Gang
-
-### 1. Installer dependencies
-
-```bash
-npm install
+```env
+CONVEX_URL=http://localhost:3210
+VITE_CONVEX_URL=http://localhost:3210
+VITE_CONVEX_SITE_URL=http://localhost:3211
+VITE_SITE_URL=http://localhost:5173
 ```
 
-### 2. Start Convex
+The Convex deployment also needs:
 
-```bash
-npx convex dev
-```
-
-### 3. Miljovariabler
-
-Projektet forventer mindst:
-
-- `CONVEX_URL`
+- `BETTER_AUTH_SECRET`
 - `SITE_URL`
-- `BETTER_AUTH_URL`
 
-Til lokal udvikling kan de ligge i `.env.local`, fx:
+## Client Integration Summary
 
-```bash
-CONVEX_URL=https://your-deployment.convex.cloud
-SITE_URL=http://localhost:5173
-BETTER_AUTH_URL=http://localhost:3211
-```
+If you are building a web client:
 
-### 4. Start appen
+- Use `http://localhost:3211` as the Better Auth `baseURL`
+- Send credentials with requests
+- Expect cookie-based auth
+- Allow the browser to store and send Better Auth cookies
 
-```bash
-npm run dev
-```
+If you are building Expo later:
 
-### 5. Byg
+- Keep the auth client isolated in its own module
+- Use the Convex site URL as the auth server base URL
+- Add the Expo Better Auth plugin later instead of changing the server shape
 
-```bash
-npm run build
-```
+## Available Endpoints
 
-## REST API
+### Auth
 
 Base path:
 
 ```txt
-/api/v1
+/api/auth
 ```
 
-Dokumentation:
+Handled by Better Auth through Convex + Hono.
 
-- `GET /openapi.json` returnerer OpenAPI-spec'en
-- `GET /docs` viser Scalar API Reference
-- docs-siden er grupperet i `System`, `Users`, `Booking Discovery`, `Bookings`, `Admin` og `Staff`
-- docs-siden viser eksempler pa succes-responser for de vigtigste endpoints
+Common endpoints you will use from the client:
 
-### Health
+- `POST /api/auth/sign-in/email`
+- `POST /api/auth/sign-up/email`
+- `POST /api/auth/sign-out`
+- `GET /api/auth/get-session`
 
-`GET /is-alive`
+There are more Better Auth endpoints than the list above. The exact surface comes from Better Auth itself, so when in doubt, inspect the running auth API from the client integration or Better Auth docs.
 
-Returnerer:
+### OpenID Configuration
 
-```json
-{
-  "message": "I'm alive!"
-}
+Root redirect:
+
+```txt
+GET /.well-known/openid-configuration
 ```
 
-### Users
+This redirects to:
 
-`GET /users/me`
-
-- returnerer viewer-kontekst for auth user, app user, salon og employee
-
-`POST /users/me/bootstrap`
-
-- opretter eller opdaterer app-brugerprofil
-
-`PATCH /users/:appUserId/role`
-
-- tildeler rolle og eventuelt salon/employee
-- kraever `admin`
-
-### Booking Startflow
-
-`GET /salons`
-
-- henter aktive saloner
-
-`GET /salons/nearest?latitude=55.6761&longitude=12.5683`
-
-- finder naermeste salon med lokationsdata
-
-`GET /salons/:salonId/employees`
-
-- henter aktive frisorer for en salon
-
-`GET /salons/:salonId/services`
-
-- henter aktive behandlinger for en salon
-
-`GET /salons/:salonId/services?employeeId=<employeeId>`
-
-- filtrerer behandlinger til en bestemt frisor
-
-`GET /salons/:salonId/available-slots?employeeId=<employeeId>&serviceId=<serviceId>&startsAt=<unixMs>&days=3`
-
-- beregner ledige tider ud fra abningstider, servicevarighed og eksisterende bookinger
-
-### Bookingflow
-
-`POST /salons/:salonId/bookings`
-
-- opretter booking, hvis tiden stadig er ledig
-- booking bliver valideret mod salon, medarbejder, service, varighed og overlap
-
-Eksempel:
-
-```json
-{
-  "employeeId": "j57...",
-  "serviceId": "k83...",
-  "startsAt": 1773651600000,
-  "customerName": "Ada Lovelace",
-  "customerEmail": "ada@example.com",
-  "customerPhone": "+45 12 34 56 78",
-  "notes": "Kort i siderne"
-}
+```txt
+GET /api/auth/convex/.well-known/openid-configuration
 ```
 
-`GET /bookings/:bookingId/confirmation`
+### API Documentation
 
-- returnerer booking med salon, frisor, service og bekræftelsesdata
+- `GET /openapi.json`
+- `GET /docs`
 
-`POST /bookings/:bookingId/cancel`
+Note:
 
-- aflyser booking og frigiver tiden igen
+The OpenAPI shell exists today, but until the domain routes are mounted, it should not be treated as a complete business API contract.
 
-`PATCH /bookings/:bookingId/status`
+## Auth Behavior
 
-- opdaterer status for personale/admin-flows
+The server is configured with:
 
-### Salon/Admin
+- Better Auth
+- Convex adapter from `@convex-dev/better-auth`
+- Email/password auth enabled
+- Email verification disabled for now
+- Trusted origins derived from `SITE_URL`
+- Hono CORS around `/api/auth/*`
 
-`POST /salons`
+Current implications for client work:
 
-- opretter salon
-- kraever `admin`
+- Browser clients must send `credentials: "include"`
+- The frontend origin must match `SITE_URL`
+- If `SITE_URL` is wrong, auth requests from the browser will fail CORS
+- Sessions are server-managed through Better Auth cookies
 
-`PATCH /salons/:salonId/location`
+## Required Request Settings For Web Clients
 
-- opdaterer lokationsdata for salon
+For fetch:
 
-`POST /salons/:salonId/employees`
-
-- opretter medarbejder og genererer en 4-cifret `workerPin`, hvis det ikke sendes med
-
-`POST /salons/:salonId/services`
-
-- opretter behandling/klipning
-
-`POST /salons/:salonId/products`
-
-- opretter produkt
-
-`POST /salons/:salonId/opening-hours`
-
-- opretter abningstid
-
-`PATCH /salons/:salonId/opening-hours/:openingHoursId`
-
-- opdaterer abningstid
-
-`GET /salons/:salonId/analytics`
-
-- returnerer salonanalytics for valgt periode
-
-Der findes ogsa et dedikeret admin-namespace:
-
-- `POST /admin/salons/:salonId/employees`
-- `POST /admin/salons/:salonId/products`
-- `POST /admin/salons/:salonId/opening-hours`
-- `PATCH /admin/opening-hours/:openingHoursId`
-- `PATCH /admin/salons/:salonId/location`
-- `GET /admin/analytics`
-- `GET /admin/salons/:salonId/analytics`
-
-### Personale
-
-`POST /staff/login`
-
-- validerer medarbejder via `workerPin` inden for den salon, som hovedkontoen allerede er logget ind pa
-- egnet til delt iPad/tablet i salonen
-
-Eksempel:
-
-```json
-{
-  "workerPin": "1243"
-}
+```ts
+await fetch("http://localhost:3211/api/auth/get-session", {
+  method: "GET",
+  credentials: "include",
+});
 ```
 
-`GET /staff/:employeeId/next-customer`
+If you call auth endpoints manually, be aware of these headers used by the server:
 
-- returnerer medarbejderens naeste kunde
+- `Content-Type`
+- `Authorization`
+- `Better-Auth-Cookie`
 
-`GET /staff/:employeeId/bookings?startsAt=<unixMs>&endsAt=<unixMs>`
+The auth server may expose:
 
-- returnerer medarbejderens bookingoversigt
+- `Set-Better-Auth-Cookie`
 
-`GET /staff/bookings/:bookingId`
+## Recommended Client Structure
 
-- returnerer bookingdetaljer inkl. behandlingstype
+Use three small modules instead of scattering API calls across the app:
 
-`POST /staff/:employeeId/sickness-cancellation`
+1. `lib/auth-client.ts`
+2. `lib/api-client.ts`
+3. `lib/session.ts`
 
-- aflyser relevante bookinger i et tidsvindue ved sygdom
+Recommended responsibilities:
 
-Eksempel:
+- `auth-client.ts`: Better Auth client instance and sign-in/sign-up/sign-out/session helpers
+- `api-client.ts`: future `/api/v1` wrapper for domain endpoints
+- `session.ts`: current-user loading, auth guards, and app bootstrap logic
 
-```json
-{
-  "startsAt": 1773651600000,
-  "endsAt": 1773669600000,
-  "reason": "Sygdom"
-}
+That separation will make the Expo client easier later.
+
+## Suggested Web Client Auth Setup
+
+For a browser client, the simplest mental model is:
+
+1. Sign up or sign in via Better Auth.
+2. Let Better Auth manage the session cookie.
+3. Query the current session.
+4. Use the authenticated session to call future protected API endpoints.
+
+Example shape:
+
+```ts
+import { createAuthClient } from "better-auth/client";
+
+export const authClient = createAuthClient({
+  baseURL: "http://localhost:3211",
+  fetchOptions: {
+    credentials: "include",
+  },
+});
 ```
 
-## Availability-logik
+If you are using React, keep auth state in a dedicated provider instead of coupling it directly to route components.
 
-API'et beregner ledige tider ved at:
+## Convex Auth Query
 
-1. finde salonens eller medarbejderens gaeldende abningstid for dagen
-2. omsaette lokal tid i salonens timezone til UTC timestamps
-3. hente eksisterende bookinger for medarbejderen
-4. generere slots i 15 minutters intervaller
-5. fjerne slots, der overlapper aktive bookinger
+There is already a server-side Convex query for the authenticated user:
 
-Det betyder, at availability-responser er egnede som grundlag for senere app-integration.
+- `getCurrentUser` in [convex/auth.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/auth.ts)
 
-## Verifikation
+That query calls `authComponent.getAuthUser(ctx)` and is useful once the client is using Convex directly.
 
-Foelgende er koert efter implementationen:
+## Files That Matter
 
-```bash
-npx convex codegen
-npm run build
-npx tsc --noEmit
-```
+Core auth files:
+
+- [convex/auth.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/auth.ts)
+- [convex/http.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/http.ts)
+- [convex/auth.config.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/auth.config.ts)
+- [convex/convex.config.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/convex.config.ts)
+- [convex/lib/authEnv.ts](/Users/pallepadehat/Documents/projects/school/cutandgo-api/convex/lib/authEnv.ts)
+
+Docs shell:
+
+- [src/index.tsx](/Users/pallepadehat/Documents/projects/school/cutandgo-api/src/index.tsx)
+
+## Build Order For The Client
+
+Recommended order:
+
+1. Wire Better Auth sign-up, sign-in, sign-out, and session restore.
+2. Add route protection and app bootstrap based on session state.
+3. Create a thin domain API client for future `/api/v1` endpoints.
+4. Add feature screens against mocked or temporary data until the REST routes are mounted.
+5. Swap the mocks to real `/api/v1` calls as those routes land.
+
+## Known Gaps
+
+Right now this repo does not yet expose a complete domain REST API.
+
+That means:
+
+- The README can document auth accurately today
+- The docs UI exists today
+- The business API still needs to be finalized and mounted
+
+If you want, the next useful step is for me to also add a `CLIENT_INTEGRATION.md` with ready-to-paste web client examples for login, signup, logout, and session restoration.

@@ -26,6 +26,7 @@ export const appUserSchema = v.object({
 
 export const salonSchema = v.object({
   _id: idSchema,
+  organizationId: v.optional(idSchema),
   name: v.string(),
   slug: v.string(),
   description: v.optional(v.string()),
@@ -49,14 +50,15 @@ export const employeeSchema = v.object({
   _id: idSchema,
   salonId: idSchema,
   userId: v.optional(idSchema),
+  personalId: v.string(),
   firstName: v.string(),
   lastName: v.string(),
   displayName: v.string(),
-  role: v.picklist(["staff", "admin"]),
+  role: v.picklist(["staff", "manager"]),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
   bio: v.optional(v.string()),
-  workerPin: v.optional(v.string()),
+  isAvailable: v.boolean(),
   isActive: v.boolean(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -116,10 +118,10 @@ export const openingHoursSchema = v.object({
 export const bookingSchema = v.object({
   _id: idSchema,
   salonId: idSchema,
-  clientUserId: idSchema,
+  clientUserId: v.optional(idSchema),
   employeeId: idSchema,
   serviceId: idSchema,
-  createdByUserId: idSchema,
+  createdByUserId: v.optional(idSchema),
   status: v.picklist([
     "pending",
     "confirmed",
@@ -142,10 +144,10 @@ export const bookingSchema = v.object({
 export const bookingExpandedSchema = v.object({
   _id: idSchema,
   salonId: idSchema,
-  clientUserId: idSchema,
+  clientUserId: v.optional(idSchema),
   employeeId: idSchema,
   serviceId: idSchema,
-  createdByUserId: idSchema,
+  createdByUserId: v.optional(idSchema),
   status: v.picklist([
     "pending",
     "confirmed",
@@ -307,6 +309,7 @@ export function jsonContent(
 export const examples = {
   salon: {
     _id: "sln_01",
+    organizationId: "org_01",
     name: "Cut&Go Nørrebro",
     slug: "cut-and-go-norrebro",
     description: "Drop-in and booking salon in Copenhagen.",
@@ -327,6 +330,7 @@ export const examples = {
   employee: {
     _id: "emp_01",
     salonId: "sln_01",
+    personalId: "SOFIE-01",
     firstName: "Sofie",
     lastName: "Jensen",
     displayName: "Sofie",
@@ -334,7 +338,7 @@ export const examples = {
     email: "sofie@cutandgo.dk",
     phone: "+45 22 33 44 55",
     bio: "Specialist in fades and quick cuts.",
-    workerPin: "1243",
+    isAvailable: true,
     isActive: true,
     createdAt: 1773651600000,
     updatedAt: 1773651600000,
